@@ -361,6 +361,20 @@ async function convertAndDownload() {
             const shouldFlatten = flattenCheckbox.checked;
             const existingNames = new Set();
 
+            // 从 ZIP 结构中提取输出文件夹名（前两层目录合并）
+            let outputFolder = '';
+            for (const fn in loadedZip.files) {
+                if (loadedZip.files[fn].dir) continue;
+                const parts = fn.split('/');
+                const dirParts = parts.slice(0, -1);
+                if (dirParts.length >= 2) {
+                    outputFolder = dirParts[0] + '_' + dirParts[1];
+                } else if (dirParts.length === 1) {
+                    outputFolder = dirParts[0];
+                }
+                break;
+            }
+
             for (const filename in loadedZip.files) {
                 const zipEntry = loadedZip.files[filename];
                 if (zipEntry.dir) continue;
@@ -418,14 +432,14 @@ async function convertAndDownload() {
                     const vttContent = await zipEntry.async('string');
                     const lrcContent = convertVttToLrc(vttContent);
                     const lrcFilename = shouldFlatten ? getLrcFilename(newName) : getLrcFilename(filename);
-                    outputZip.file(lrcFilename, lrcContent);
+                    outputZip.file(outputFolder + '/' + lrcFilename, lrcContent);
                 } else if (/\.mp3$/i.test(filename) && selectedCoverImage) {
                     const arrayBuffer = await zipEntry.async('arraybuffer');
                     const taggedBuffer = addId3v2Cover(arrayBuffer, selectedCoverImage.base64, selectedCoverImage.mime);
-                    outputZip.file(newName, new Blob([taggedBuffer], { type: 'audio/mpeg' }));
+                    outputZip.file(outputFolder + '/' + newName, new Blob([taggedBuffer], { type: 'audio/mpeg' }));
                 } else {
                     const fileContent = await zipEntry.async('blob');
-                    outputZip.file(newName, fileContent);
+                    outputZip.file(outputFolder + '/' + newName, fileContent);
                 }
             }
         } else {

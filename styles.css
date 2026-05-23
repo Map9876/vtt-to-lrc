@@ -25,3 +25,41 @@ body {
 }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+.image-thumb-wrapper {
+    position: relative;
+    cursor: pointer;
+    border: 3px solid transparent;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.image-thumb-wrapper:hover {
+    border-color: #93C5FD;
+}
+.image-thumb-wrapper.selected {
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+}
+.image-thumb-wrapper img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+}
+.image-thumb-wrapper .cover-check {
+    display: none;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    background: #3B82F6;
+    border-radius: 50%;
+    color: white;
+    font-size: 14px;
+    line-height: 24px;
+    text-align: center;
+}
+.image-thumb-wrapper.selected .cover-check {
+    display: block;
+}

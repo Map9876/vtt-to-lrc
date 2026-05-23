@@ -14,6 +14,8 @@ const clearBtn = document.getElementById('clear-btn');
 const btnText = document.getElementById('btn-text');
 const spinner = document.getElementById('spinner');
 const statusMessage = document.getElementById('status-message');
+const flattenOption = document.getElementById('flatten-option');
+const flattenCheckbox = document.getElementById('flatten-checkbox');
 
 // 状态
 let filesToProcess = []; // 统一存储待处理文件 { name, getContent }
@@ -63,11 +65,13 @@ function switchTab(tabName) {
         tabZip.classList.remove('active');
         panelDirect.classList.add('active');
         panelZip.classList.remove('active');
+        flattenOption.classList.add('hidden');
     } else {
         tabDirect.classList.remove('active');
         tabZip.classList.add('active');
         panelDirect.classList.remove('active');
         panelZip.classList.add('active');
+        flattenOption.classList.remove('hidden');
     }
      clearFiles(); // 切换时清空
 }
@@ -202,21 +206,70 @@ async function convertAndDownload() {
 
         if (loadedZip) {
             // 模式一：处理上传的 ZIP 包
+            const shouldFlatten = flattenCheckbox.checked;
+            const existingNames = new Set();
+
             for (const filename in loadedZip.files) {
                 const zipEntry = loadedZip.files[filename];
-                if (zipEntry.dir) {
-                    continue; // JSZip 会自动处理文件夹
+                if (zipEntry.dir) continue;
+
+                let newName;
+
+                if (shouldFlatten) {
+                    const baseName = filename.split('/').pop();
+                    const parts = filename.split('/');
+                    // 路径部分：去掉第一个（根目录如 RJ01524070）和最后一个（文件名）
+                    const pathParts = parts.slice(1, -1);
+                    const hasPath = pathParts.length > 0;
+                    const pathStr = pathParts.join('_');
+                    const isMusicOrSubtitle = /\.(mp3|wav|lrc|ogg|flac|aac|m4a)$/i.test(baseName);
+
+                    if (existingNames.has(baseName)) {
+                        if (isMusicOrSubtitle && hasPath) {
+                            newName = baseName.replace(/\.[^.]+$/, `_${pathStr}$&`);
+                        } else if (!isMusicOrSubtitle && hasPath) {
+                            newName = `${pathStr}_${baseName}`;
+                        } else {
+                            // 无法区分的重名：加序号
+                            let counter = 1;
+                            let candidate;
+                            do {
+                                counter++;
+                                candidate = baseName.replace(/([^.]+)/, `$1_${counter}`);
+                            } while (existingNames.has(candidate));
+                            newName = candidate;
+                        }
+                    } else {
+                        newName = baseName;
+                    }
+
+                    // 处理重命名后仍然重名的情况（加序号）
+                    if (existingNames.has(newName)) {
+                        let counter = 1;
+                        let candidate;
+                        do {
+                            counter++;
+                            const ext = newName.lastIndexOf('.');
+                            const nameBase = ext > 0 ? newName.substring(0, ext) : newName;
+                            const extPart = ext > 0 ? newName.substring(ext) : '';
+                            candidate = `${nameBase}_${counter}${extPart}`;
+                        } while (existingNames.has(candidate));
+                        newName = candidate;
+                    }
+
+                    existingNames.add(newName);
+                } else {
+                    newName = filename;
                 }
 
                 if (filename.endsWith('.vtt')) {
                     const vttContent = await zipEntry.async('string');
                     const lrcContent = convertVttToLrc(vttContent);
-                    const lrcFilename = getLrcFilename(filename);
+                    const lrcFilename = shouldFlatten ? getLrcFilename(newName) : getLrcFilename(filename);
                     outputZip.file(lrcFilename, lrcContent);
                 } else {
-                    // 其他文件直接复制
                     const fileContent = await zipEntry.async('blob');
-                    outputZip.file(filename, fileContent);
+                    outputZip.file(newName, fileContent);
                 }
             }
         } else {

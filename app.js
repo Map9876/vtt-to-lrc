@@ -1,6 +1,8 @@
 // DOM 元素
+const tabPaste = document.getElementById('tab-paste');
 const tabDirect = document.getElementById('tab-direct');
 const tabZip = document.getElementById('tab-zip');
+const panelPaste = document.getElementById('panel-paste');
 const panelDirect = document.getElementById('panel-direct');
 const panelZip = document.getElementById('panel-zip');
 const dropZones = document.querySelectorAll('.drop-zone');
@@ -18,6 +20,12 @@ const flattenOption = document.getElementById('flatten-option');
 const flattenCheckbox = document.getElementById('flatten-checkbox');
 const imagePreviewContainer = document.getElementById('image-preview-container');
 const imagePreviewGrid = document.getElementById('image-preview-grid');
+const pasteFormat = document.getElementById('paste-format');
+const pasteInput = document.getElementById('paste-input');
+const pasteConvertBtn = document.getElementById('paste-convert-btn');
+const pasteOutput = document.getElementById('paste-output');
+const copyLrcBtn = document.getElementById('copy-lrc-btn');
+const pasteOutputPlaceholder = document.getElementById('paste-output-placeholder');
 
 // 状态
 let filesToProcess = []; // 统一存储待处理文件 { name, getContent }
@@ -28,8 +36,20 @@ let selectedCoverImage = null; // { mime, base64 } 或 null
 
 // --- 事件监听 ---
 
+tabPaste.addEventListener('click', () => switchTab('paste'));
 tabDirect.addEventListener('click', () => switchTab('direct'));
 tabZip.addEventListener('click', () => switchTab('zip'));
+
+if (pasteConvertBtn) {
+    pasteConvertBtn.addEventListener('click', convertPasteText);
+}
+
+if (copyLrcBtn) {
+    copyLrcBtn.addEventListener('click', copyLrcOutput);
+}
+
+// 页面加载时恢复上次选择的格式
+restoreLastFormat();
 
 dropZones.forEach(zone => {
     zone.addEventListener('dragover', e => {
@@ -98,8 +118,37 @@ function isVttFile(filename) {
     return /\.vtt$/i.test(filename);
 }
 
+function isSrtFile(filename) {
+    return /\.srt$/i.test(filename);
+}
+
+function isAssFile(filename) {
+    return /\.(ass|ssa)$/i.test(filename);
+}
+
+function isSubtitleFile(filename) {
+    return isVttFile(filename) || isSrtFile(filename) || isAssFile(filename);
+}
+
 function isMp3File(filename) {
     return /\.mp3$/i.test(filename);
+}
+
+function getFileFormat(filename) {
+    if (isSrtFile(filename)) return 'SRT';
+    if (isAssFile(filename)) return 'ASS';
+    if (isVttFile(filename)) return 'VTT';
+    return null;
+}
+
+function getFileFormatClass(format) {
+    switch (format) {
+        case 'SRT': return 'format-srt';
+        case 'ASS': return 'format-ass';
+        case 'VTT': return 'format-vtt';
+        case 'LRC': return 'format-lrc';
+        default: return '';
+    }
 }
 
 function isZipFile(file) {
@@ -110,16 +159,25 @@ function isZipFile(file) {
 // --- 页面状态 ---
 
 function switchTab(tabName) {
-    if (tabName === 'direct') {
+    // 移除所有active状态
+    tabPaste.classList.remove('active');
+    tabDirect.classList.remove('active');
+    tabZip.classList.remove('active');
+    panelPaste.classList.remove('active');
+    panelDirect.classList.remove('active');
+    panelZip.classList.remove('active');
+
+    // 设置当前标签页为active
+    if (tabName === 'paste') {
+        tabPaste.classList.add('active');
+        panelPaste.classList.add('active');
+        flattenOption.classList.add('hidden');
+    } else if (tabName === 'direct') {
         tabDirect.classList.add('active');
-        tabZip.classList.remove('active');
         panelDirect.classList.add('active');
-        panelZip.classList.remove('active');
         flattenOption.classList.add('hidden');
     } else {
-        tabDirect.classList.remove('active');
         tabZip.classList.add('active');
-        panelDirect.classList.remove('active');
         panelZip.classList.add('active');
         flattenOption.classList.remove('hidden');
     }
@@ -136,6 +194,18 @@ function clearFiles() {
 
     imagePreviewGrid.innerHTML = '';
     imagePreviewContainer.classList.add('hidden');
+
+    // Hide pipeline
+    const pipelineContainer = document.getElementById('pipeline-container');
+    if (pipelineContainer) pipelineContainer.classList.add('hidden');
+
+    // 清空粘贴输出
+    if (pasteOutput) {
+        pasteOutput.value = '';
+        pasteOutput.classList.add('hidden');
+    }
+    if (pasteOutputPlaceholder) pasteOutputPlaceholder.classList.remove('hidden');
+    if (copyLrcBtn) copyLrcBtn.classList.add('hidden');
 
     fileInputDirect.value = '';
     fileInputZip.value = '';
@@ -165,16 +235,16 @@ function setButtonLoading(isLoading) {
 function handleDirectFiles(inputFileList) {
     clearFiles();
 
-    const vttFiles = Array.from(inputFileList).filter(file => isVttFile(file.name));
+    const subtitleFiles = Array.from(inputFileList).filter(file => isSubtitleFile(file.name));
 
-    if (vttFiles.length === 0) {
-        showStatusMessage('请选择 .vtt 文件。');
+    if (subtitleFiles.length === 0) {
+        showStatusMessage('请选择 .vtt、.srt 或 .ass 文件。');
         return;
     }
 
-    originalInputName = vttFiles[0].name;
+    originalInputName = subtitleFiles[0].name;
 
-    filesToProcess = vttFiles.map(file => ({
+    filesToProcess = subtitleFiles.map(file => ({
         name: file.name,
         getContent: () => file.text()
     }));
@@ -194,15 +264,15 @@ async function handleZipFile(zipFile) {
     try {
         loadedZip = await JSZip.loadAsync(zipFile);
 
-        const vttZipEntries = [];
+        const subtitleZipEntries = [];
         let hasMp3 = false;
 
         for (const filename in loadedZip.files) {
             const entry = loadedZip.files[filename];
             if (entry.dir) continue;
 
-            if (isVttFile(filename)) {
-                vttZipEntries.push(entry);
+            if (isSubtitleFile(filename)) {
+                subtitleZipEntries.push(entry);
             }
 
             if (isMp3File(filename)) {
@@ -210,7 +280,7 @@ async function handleZipFile(zipFile) {
             }
         }
 
-        filesToProcess = vttZipEntries.map(entry => ({
+        filesToProcess = subtitleZipEntries.map(entry => ({
             name: entry.name,
             getContent: () => entry.async('string')
         }));
@@ -228,11 +298,11 @@ function updateFileListUI(hasMp3 = false) {
     if (filesToProcess.length === 0) {
         if (hasMp3) {
             showStatusMessage('');
-            fileList.innerHTML = '<li class="text-sm text-gray-500 p-3">未找到 VTT 文件，将仅处理 MP3 封面嵌入</li>';
+            fileList.innerHTML = '<li class="text-sm text-gray-500 p-3">未找到字幕文件，将仅处理 MP3 封面嵌入</li>';
             fileListContainer.classList.remove('hidden');
             actionButtons.classList.remove('hidden');
         } else {
-            showStatusMessage('在上传的文件中未找到任何 .vtt 或 .mp3 文件。');
+            showStatusMessage('在上传的文件中未找到任何 .vtt、.srt、.ass 或 .mp3 文件。');
             fileListContainer.classList.add('hidden');
             actionButtons.classList.add('hidden');
         }
@@ -246,14 +316,18 @@ function updateFileListUI(hasMp3 = false) {
         li.className = 'list-item flex items-center justify-between bg-gray-50 p-3 rounded-lg';
 
         const safeName = escapeHtml(file.name);
+        const format = getFileFormat(file.name);
 
         li.innerHTML = `
             <span class="text-sm font-medium text-gray-700 truncate" title="${safeName}">${safeName}</span>
-            <span class="text-sm text-green-600">待处理</span>
+            <span class="text-xs px-2 py-1 rounded-full ${getFileFormatClass(format)}">${format}</span>
         `;
 
         fileList.appendChild(li);
     });
+
+    // Update pipeline preview
+    updatePipelinePreview();
 
     fileListContainer.classList.remove('hidden');
     actionButtons.classList.remove('hidden');
@@ -286,8 +360,7 @@ function convertVttToLrc(vttContent) {
         while (j < lines.length && lines[j].trim() !== '') {
             const subtitleLine = lines[j].trim();
 
-            // 跳过常见 VTT 标签和 NOTE 块
-            if (!/^NOTE\b/i.test(subtitleLine)) {
+            if (!/^NOTE\b/i.test(subtitleLine) && !/^\d+$/.test(subtitleLine)) {
                 text += subtitleLine + ' ';
             }
 
@@ -327,20 +400,240 @@ function convertVttTimeToLrcTime(vttTime) {
 function cleanupSubtitleText(text) {
     return String(text)
         .replace(/<[^>]+>/g, '') // 去掉 VTT 简单标签
+        .replace(/\{[^}]+\}/g, '') // 去掉 ASS 标签
         .replace(/\s+/g, ' ')
         .trim();
 }
 
+// --- SRT 转 LRC ---
+
+function convertSrtToLrc(srtContent) {
+    const cleanContent = String(srtContent)
+        .replace(/^\uFEFF/, '')
+        .replace(/\r/g, '');
+
+    const lines = cleanContent.split('\n');
+    let lrcContent = '';
+    let i = 0;
+
+    while (i < lines.length) {
+        // 跳过空行
+        if (!lines[i].trim()) { i++; continue; }
+
+        // 跳过序号行（纯数字行）
+        if (/^\d+$/.test(lines[i].trim())) { i++; continue; }
+
+        // 寻找时间戳行
+        if (lines[i].includes('-->')) {
+            const timestampLine = lines[i].trim();
+            const startTime = timestampLine.split('-->')[0].trim();
+            const timestamp = convertSrtTimeToLrcTime(startTime);
+
+            if (timestamp) {
+                i++;
+                let text = '';
+
+                // 收集文本行直到遇到空行、序号行或下一个时间戳
+                while (i < lines.length) {
+                    const line = lines[i].trim();
+                    if (!line || /^\d+$/.test(line) || line.includes('-->')) break;
+                    text += line + ' ';
+                    i++;
+                }
+
+                text = cleanupSubtitleText(text.trim());
+                if (text) {
+                    lrcContent += `${timestamp}${text}\n`;
+                }
+                continue;
+            }
+        }
+
+        i++;
+    }
+
+    return lrcContent;
+}
+
+function convertSrtTimeToLrcTime(srtTime) {
+    // SRT format: 00:01:23,456 or 01:02:03,456
+    const match = String(srtTime).match(/^(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})$/);
+
+    if (!match) return null;
+
+    const hours = parseInt(match[1] || '0', 10);
+    const minutes = parseInt(match[2] || '0', 10);
+    const seconds = parseInt(match[3] || '0', 10);
+    const milliseconds = parseInt((match[4] || '0').padEnd(3, '0'), 10);
+
+    const totalMinutes = hours * 60 + minutes;
+    const hundredths = Math.floor(milliseconds / 10);
+
+    return `[${String(totalMinutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}]`;
+}
+
+// --- ASS 转 LRC ---
+
+function convertAssToLrc(assContent) {
+    const cleanContent = String(assContent)
+        .replace(/^\uFEFF/, '')
+        .replace(/\r/g, '');
+
+    const lines = cleanContent.split('\n');
+    let lrcContent = '';
+    let inEvents = false;
+    let formatParts = null;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (trimmed.toLowerCase() === '[events]') {
+            inEvents = true;
+            continue;
+        }
+
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            inEvents = false;
+            continue;
+        }
+
+        if (!inEvents) continue;
+
+        if (trimmed.toLowerCase().startsWith('format:')) {
+            formatParts = trimmed.slice(7).split(',').map(s => s.trim().toLowerCase());
+            continue;
+        }
+
+        if (!trimmed.toLowerCase().startsWith('dialogue:') && !trimmed.toLowerCase().startsWith('comment:')) {
+            continue;
+        }
+
+        if (trimmed.toLowerCase().startsWith('comment:')) continue;
+
+        // Parse Dialogue line
+        const dialogueContent = trimmed.slice(9); // Skip "Dialogue: "
+        const parts = dialogueContent.split(',');
+
+        if (!formatParts || formatParts.length === 0) continue;
+
+        // Find Start, End, Text indices
+        const startIndex = formatParts.indexOf('start');
+        const endIndex = formatParts.indexOf('end');
+        const textIndex = formatParts.indexOf('text');
+
+        if (startIndex === -1 || endIndex === -1 || textIndex === -1) continue;
+        if (parts.length <= Math.max(startIndex, endIndex, textIndex)) continue;
+
+        const startTime = parts[startIndex].trim();
+        const textParts = parts.slice(textIndex);
+        let text = textParts.join(',').trim();
+
+        // Remove ASS style overrides like {\b1}, {\pos(x,y)}, etc.
+        text = text.replace(/\{[^}]*\}/g, '');
+        // Replace \N and \n with space
+        text = text.replace(/\\[Nn]/g, ' ');
+        text = text.trim();
+
+        if (!text) continue;
+
+        const timestamp = convertAssTimeToLrcTime(startTime);
+        if (!timestamp) continue;
+
+        lrcContent += `${timestamp}${text}\n`;
+    }
+
+    return lrcContent;
+}
+
+function convertAssTimeToLrcTime(assTime) {
+    // ASS format: H:MM:SS.cc (centiseconds)
+    const match = String(assTime).match(/^(\d+):(\d{1,2}):(\d{1,2})[.](\d{1,2})$/);
+
+    if (!match) return null;
+
+    const hours = parseInt(match[1] || '0', 10);
+    const minutes = parseInt(match[2] || '0', 10);
+    const seconds = parseInt(match[3] || '0', 10);
+    const centiseconds = parseInt((match[4] || '0').padEnd(2, '0'), 10);
+
+    const totalMinutes = hours * 60 + minutes;
+
+    return `[${String(totalMinutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centiseconds).padStart(2, '0')}]`;
+}
+
 function getLrcFilename(vttFilename) {
-    if (/\.mp3\.vtt$/i.test(vttFilename)) {
-        return vttFilename.replace(/\.mp3\.vtt$/i, '.lrc');
+    // Handle compound extensions like .mp3.vtt, .wav.vtt
+    if (/\.mp3\.(vtt|srt|ass|ssa)$/i.test(vttFilename)) {
+        return vttFilename.replace(/\.mp3\.(vtt|srt|ass|ssa)$/i, '.lrc');
     }
 
-    if (/\.wav\.vtt$/i.test(vttFilename)) {
-        return vttFilename.replace(/\.wav\.vtt$/i, '.lrc');
+    if (/\.wav\.(vtt|srt|ass|ssa)$/i.test(vttFilename)) {
+        return vttFilename.replace(/\.wav\.(vtt|srt|ass|ssa)$/i, '.lrc');
     }
 
-    return vttFilename.replace(/\.vtt$/i, '.lrc');
+    return vttFilename.replace(/\.(vtt|srt|ass|ssa)$/i, '.lrc');
+}
+
+// --- 流水线预览 ---
+
+function updatePipelinePreview() {
+    const pipelineContainer = document.getElementById('pipeline-container');
+    const pipelineSteps = document.getElementById('pipeline-steps');
+
+    if (!pipelineContainer || !pipelineSteps) return;
+
+    if (filesToProcess.length === 0) {
+        pipelineContainer.classList.add('hidden');
+        return;
+    }
+
+    // Detect formats present
+    const formats = new Set();
+    filesToProcess.forEach(file => {
+        const format = getFileFormat(file.name);
+        if (format) formats.add(format);
+    });
+
+    // Build pipeline steps
+    const steps = [];
+    if (formats.has('SRT')) steps.push('SRT');
+    if (formats.has('ASS')) steps.push('ASS');
+    if (formats.has('VTT')) steps.push('VTT');
+    steps.push('LRC');
+
+    // If only one source format, show direct conversion
+    // If multiple, show all source formats on left, LRC on right
+    let html = '';
+
+    if (steps.length === 2) {
+        // Simple: Source → LRC
+        html = `
+            <div class="pipeline-step format-${steps[0].toLowerCase()}">${steps[0]}</div>
+            <div class="pipeline-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+            </div>
+            <div class="pipeline-step format-lrc">${steps[1]}</div>
+        `;
+    } else {
+        // Multiple sources → LRC
+        const sourceFormats = steps.slice(0, -1);
+        html = `
+            <div class="pipeline-sources">
+                ${sourceFormats.map(f => `<div class="pipeline-step format-${f.toLowerCase()}">${f}</div>`).join('')}
+            </div>
+            <div class="pipeline-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+            </div>
+            <div class="pipeline-step format-lrc">LRC</div>
+        `;
+    }
+
+    pipelineSteps.innerHTML = html;
+    pipelineContainer.classList.remove('hidden');
 }
 
 // --- 图片预览与封面选择 ---
@@ -948,6 +1241,28 @@ async function processZipMode(outputZip) {
             continue;
         }
 
+        if (isSrtFile(filename)) {
+            const srtContent = await zipEntry.async('string');
+            const lrcContent = convertSrtToLrc(srtContent);
+            const lrcFilename = shouldFlatten
+                ? getLrcFilename(newName)
+                : getLrcFilename(filename);
+
+            outputZip.file(joinZipPath(outputFolder, lrcFilename), lrcContent);
+            continue;
+        }
+
+        if (isAssFile(filename)) {
+            const assContent = await zipEntry.async('string');
+            const lrcContent = convertAssToLrc(assContent);
+            const lrcFilename = shouldFlatten
+                ? getLrcFilename(newName)
+                : getLrcFilename(filename);
+
+            outputZip.file(joinZipPath(outputFolder, lrcFilename), lrcContent);
+            continue;
+        }
+
         if (isMp3File(filename) && selectedCoverImage) {
             const arrayBuffer = await zipEntry.async('arraybuffer');
 
@@ -979,10 +1294,20 @@ async function processZipMode(outputZip) {
 
 async function processDirectVttMode(outputZip) {
     for (const file of filesToProcess) {
-        const vttContent = await file.getContent();
-        const lrcContent = convertVttToLrc(vttContent);
-        const lrcFilename = getLrcFilename(file.name);
+        const content = await file.getContent();
+        let lrcContent;
 
+        if (isVttFile(file.name)) {
+            lrcContent = convertVttToLrc(content);
+        } else if (isSrtFile(file.name)) {
+            lrcContent = convertSrtToLrc(content);
+        } else if (isAssFile(file.name)) {
+            lrcContent = convertAssToLrc(content);
+        } else {
+            continue;
+        }
+
+        const lrcFilename = getLrcFilename(file.name);
         outputZip.file(lrcFilename, lrcContent);
     }
 }
@@ -1013,4 +1338,87 @@ function downloadBlob(blob, filename) {
     document.body.removeChild(a);
 
     URL.revokeObjectURL(downloadUrl);
+}
+
+// --- 粘贴文本转换 ---
+
+function convertPasteText() {
+    if (!pasteInput || !pasteOutput || !pasteFormat) return;
+
+    const inputText = pasteInput.value.trim();
+    const format = pasteFormat.value;
+
+    if (!inputText) {
+        pasteOutput.value = '';
+        pasteOutput.classList.add('hidden');
+        pasteOutputPlaceholder.classList.remove('hidden');
+        copyLrcBtn.classList.add('hidden');
+        return;
+    }
+
+    let lrcContent = '';
+
+    try {
+        switch (format) {
+            case 'srt':
+                lrcContent = convertSrtToLrc(inputText);
+                break;
+            case 'vtt':
+                lrcContent = convertVttToLrc(inputText);
+                break;
+            case 'ass':
+                lrcContent = convertAssToLrc(inputText);
+                break;
+            default:
+                lrcContent = convertSrtToLrc(inputText);
+        }
+
+        pasteOutput.value = lrcContent;
+        pasteOutput.classList.remove('hidden');
+        pasteOutputPlaceholder.classList.add('hidden');
+        copyLrcBtn.classList.remove('hidden');
+
+        // 保存选择的格式
+        localStorage.setItem('lastSubtitleFormat', format);
+    } catch (error) {
+        console.error('转换失败:', error);
+        pasteOutput.value = '转换失败：' + error.message;
+        pasteOutput.classList.remove('hidden');
+        pasteOutputPlaceholder.classList.add('hidden');
+        copyLrcBtn.classList.add('hidden');
+    }
+}
+
+// 恢复上次选择的格式
+function restoreLastFormat() {
+    const lastFormat = localStorage.getItem('lastSubtitleFormat');
+    if (lastFormat && pasteFormat) {
+        pasteFormat.value = lastFormat;
+    }
+}
+
+function copyLrcOutput() {
+    const outputText = pasteOutput.value;
+
+    if (!outputText) return;
+
+    navigator.clipboard.writeText(outputText).then(() => {
+        showCopySuccess();
+    }).catch(() => {
+        // 降级方案：临时允许选中
+        pasteOutput.focus();
+        pasteOutput.select();
+        document.execCommand('copy');
+        showCopySuccess();
+    });
+}
+
+function showCopySuccess() {
+    const originalText = '复制';
+    copyLrcBtn.textContent = '已复制';
+    copyLrcBtn.classList.add('copied');
+    setTimeout(() => {
+        copyLrcBtn.textContent = originalText;
+        copyLrcBtn.classList.remove('copied');
+    }, 2000);
 }

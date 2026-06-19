@@ -17,6 +17,7 @@ body {
 /* 标签页样式 */
 .tab-btn {
     transition: all 0.2s ease-in-out;
+    flex-shrink: 0;
 }
 .tab-btn.active {
     border-color: #3B82F6;
@@ -25,6 +26,21 @@ body {
 }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
+/* 复制按钮样式 */
+.copy-btn {
+    position: relative;
+    z-index: 10;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: all 0.2s;
+}
+.copy-btn:active {
+    transform: scale(0.95);
+}
+.copy-btn.copied {
+    background-color: #10b981 !important;
+    color: white !important;
+}
 .image-thumb-wrapper {
     position: relative;
     cursor: pointer;
@@ -62,4 +78,109 @@ body {
 }
 .image-thumb-wrapper.selected .cover-check {
     display: block;
+}
+
+/* 流水线样式 */
+.pipeline-wrapper {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.pipeline-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.pipeline-sources {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.pipeline-step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 4rem;
+    height: 3rem;
+    padding: 0 1.25rem;
+    border-radius: 0.75rem;
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: 0.05em;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+}
+
+.pipeline-step:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* 格式颜色 */
+.format-srt {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.format-ass {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: white;
+}
+
+.format-vtt {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
+
+.format-lrc {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+}
+
+.pipeline-arrow {
+    color: #64748b;
+    width: 2.5rem;
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.pipeline-arrow svg {
+    width: 100%;
+    height: 100%;
+}
+
+@keyframes arrowPulse {
+    0%, 100% { opacity: 0.6; transform: translateX(0); }
+    50% { opacity: 1; transform: translateX(4px); }
+}
+
+.pipeline-arrow svg {
+    animation: arrowPulse 2s ease-in-out infinite;
+}
+
+/* 格式标签样式 */
+.format-srt {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.format-ass, .format-ssa {
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    color: white;
+}
+
+.format-vtt {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
 }

@@ -41,6 +41,13 @@ body {
     background-color: #10b981 !important;
     color: white !important;
 }
+/* 输入框placeholder样式 */
+#paste-input::placeholder,
+#paste-input::-webkit-input-placeholder,
+#paste-input::-moz-placeholder {
+    color: #9ca3af !important;
+    opacity: 1 !important;
+}
 .image-thumb-wrapper {
     position: relative;
     cursor: pointer;

@@ -1342,18 +1342,28 @@ function downloadBlob(blob, filename) {
 
 // --- 粘贴文本转换 ---
 
+// 默认ASS示例内容
+const defaultAssExample = `[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:02.76,0:00:08.84,Default,,0,0,0,,今天的约会也很开心呢～ 小咪♡`;
+
 function convertPasteText() {
     if (!pasteInput || !pasteOutput || !pasteFormat) return;
 
-    const inputText = pasteInput.value.trim();
+    let inputText = pasteInput.value.trim();
     const format = pasteFormat.value;
 
+    // 如果输入为空，使用默认示例
     if (!inputText) {
-        pasteOutput.value = '';
-        pasteOutput.classList.add('hidden');
-        pasteOutputPlaceholder.classList.remove('hidden');
-        copyLrcBtn.classList.add('hidden');
-        return;
+        if (format === 'ass') {
+            inputText = defaultAssExample;
+        } else {
+            pasteOutput.value = '';
+            pasteOutput.classList.add('hidden');
+            pasteOutputPlaceholder.classList.remove('hidden');
+            copyLrcBtn.classList.add('hidden');
+            return;
+        }
     }
 
     let lrcContent = '';
@@ -1405,10 +1415,15 @@ function copyLrcOutput() {
     navigator.clipboard.writeText(outputText).then(() => {
         showCopySuccess();
     }).catch(() => {
-        // 降级方案：临时允许选中
-        pasteOutput.focus();
-        pasteOutput.select();
+        // 降级方案：不选中文字，直接复制
+        const textarea = document.createElement('textarea');
+        textarea.value = outputText;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
         document.execCommand('copy');
+        document.body.removeChild(textarea);
         showCopySuccess();
     });
 }
